@@ -1,0 +1,6 @@
+[project]
+name = "tcg-card-stack"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.15,<3.16"
+dependencies = []
