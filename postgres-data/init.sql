@@ -8,7 +8,9 @@ CREATE TABLE binders
     id          SERIAL PRIMARY KEY,
     name        VARCHAR(100) NOT NULL,
     description TEXT,
-    created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    -- optimistic locking counter, incremented on every successful change
+    version     INT NOT NULL DEFAULT 1
 );
 
 -- Table 2: Physical Cards (The "N" side of 1:N, and "1" side of 1:1)
@@ -21,7 +23,9 @@ CREATE TABLE cards
     collector_number VARCHAR(20)  NOT NULL,
     rarity           VARCHAR(50)  NOT NULL,
     variant          VARCHAR(50) DEFAULT 'Standard',
-    acquired_at      DATE        DEFAULT CURRENT_DATE
+    acquired_at      DATE        DEFAULT CURRENT_DATE,
+    -- optimistic locking counter, incremented on every successful change
+    version          INT         NOT NULL DEFAULT 1
 );
 
 -- Table 3: Grading Certificates (The "1" side of the 1:1 relationship)

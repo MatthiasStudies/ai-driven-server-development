@@ -49,6 +49,22 @@ List endpoints support filtering (`name`, `set_name`, `rarity`, `variant`,
 - Certificates are **immutable**; a card can hold at most one (`409` on conflicts)
 - `DELETE /binders/{id}` cascades to cards and certificates
 
+## Database schema changes
+
+The schema lives in `postgres-data/init.sql` and is applied on first container
+start only. After a schema change, reset the local volume (seed data only):
+
+```bash
+make db-reset
+```
+
+or apply the change manually, e.g. for the `version` columns:
+
+```sql
+ALTER TABLE binders ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
+ALTER TABLE cards   ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1;
+```
+
 ## Testing
 
 ```bash

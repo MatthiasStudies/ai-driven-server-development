@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import ClassVar
 
 from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,12 +21,18 @@ class Binder(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    version: Mapped[int] = mapped_column(default=1)
 
     cards: Mapped[list["Card"]] = relationship(
         back_populates="binder",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    __mapper_args__: ClassVar[dict[str, object]] = {
+        "version_id_col": version,
+        "version_id_generator": False,
+    }
 
 
 class Card(Base):
@@ -41,6 +48,7 @@ class Card(Base):
     rarity: Mapped[str] = mapped_column(String(50))
     variant: Mapped[str] = mapped_column(String(50), default="Standard")
     acquired_at: Mapped[date] = mapped_column(Date, default=date.today)
+    version: Mapped[int] = mapped_column(default=1)
 
     binder: Mapped[Binder] = relationship(back_populates="cards")
     certificate: Mapped["GradingCertificate | None"] = relationship(
@@ -49,6 +57,11 @@ class Card(Base):
         passive_deletes=True,
         uselist=False,
     )
+
+    __mapper_args__: ClassVar[dict[str, object]] = {
+        "version_id_col": version,
+        "version_id_generator": False,
+    }
 
 
 class GradingCertificate(Base):
