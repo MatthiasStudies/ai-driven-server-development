@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import db
-from app.routers import binders, cards, search
+from app.routers import binders, cards, certificates, search
 from app.schemas import HealthStatus
 
 app = FastAPI(
@@ -21,6 +21,7 @@ app = FastAPI(
 
 app.include_router(binders.router)
 app.include_router(cards.router)
+app.include_router(certificates.router)
 app.include_router(search.router)
 
 

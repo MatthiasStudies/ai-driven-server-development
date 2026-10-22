@@ -8,12 +8,19 @@ from rapidfuzz import fuzz, process
 from sqlalchemy import select
 from sqlalchemy.orm import InstrumentedAttribute, Session, selectinload
 
-from app.models import Binder, Card
-from app.schemas import BinderCreate, BinderUpdate, CardCreate, CardUpdate
+from app.models import Binder, Card, GradingCertificate
+from app.schemas import (
+    BinderCreate,
+    BinderUpdate,
+    CardCreate,
+    CardUpdate,
+    CertificateCreate,
+)
 
 SortOrder = Literal["asc", "desc"]
 BinderOrderBy = Literal["name", "created_at"]
 CardOrderBy = Literal["name", "set_name", "rarity", "acquired_at"]
+CertificateOrderBy = Literal["grade", "graded_at"]
 
 CARD_ORDER_COLUMNS: Mapping[
     CardOrderBy, InstrumentedAttribute[str] | InstrumentedAttribute[date]
@@ -208,3 +215,93 @@ def search_cards(
         (candidates[index][1], candidates[index][2], float(score))
         for _, score, index in matches
     ]
+
+
+# --- Certificates ---
+
+
+def get_certificate(session: Session, certificate_id: int) -> GradingCertificate | None:
+    """Return the certificate with the given id, or None."""
+    return session.get(GradingCertificate, certificate_id)
+
+
+def get_certificate_for_card(
+    session: Session, card_id: int
+) -> GradingCertificate | None:
+    """Return the certificate attached to the given card, or None."""
+    stmt = select(GradingCertificate).where(GradingCertificate.card_id == card_id)
+    return session.scalars(stmt).first()
+
+
+def get_certificate_by_cert_number(
+    session: Session, cert_number: str
+) -> GradingCertificate | None:
+    """Return the certificate with the given certificate number, or None."""
+    stmt = select(GradingCertificate).where(
+        GradingCertificate.cert_number == cert_number
+    )
+    return session.scalars(stmt).first()
+
+
+def list_certificates(
+    session: Session,
+    *,
+    card_id: int | None,
+    grading_company: str | None,
+    grade_min: float | None,
+    grade_max: float | None,
+    order_by: CertificateOrderBy | None,
+    order: SortOrder,
+    limit: int,
+    offset: int,
+) -> Sequence[GradingCertificate]:
+    """List certificates with optional filters, ordering and pagination."""
+    stmt = select(GradingCertificate)
+    if card_id is not None:
+        stmt = stmt.where(GradingCertificate.card_id == card_id)
+    if grading_company is not None:
+        stmt = stmt.where(
+            GradingCertificate.grading_company.ilike(
+                escape_like(grading_company), escape="\\"
+            )
+        )
+    if grade_min is not None:
+        stmt = stmt.where(GradingCertificate.grade >= grade_min)
+    if grade_max is not None:
+        stmt = stmt.where(GradingCertificate.grade <= grade_max)
+    if order_by is None:
+        stmt = stmt.order_by(
+            GradingCertificate.id.desc()
+            if order == "desc"
+            else GradingCertificate.id.asc()
+        )
+    elif order_by == "grade":
+        stmt = stmt.order_by(
+            GradingCertificate.grade.desc()
+            if order == "desc"
+            else GradingCertificate.grade.asc(),
+            GradingCertificate.id.asc(),
+        )
+    else:
+        stmt = stmt.order_by(
+            GradingCertificate.graded_at.desc()
+            if order == "desc"
+            else GradingCertificate.graded_at.asc(),
+            GradingCertificate.id.asc(),
+        )
+    return session.scalars(stmt.limit(limit).offset(offset)).all()
+
+
+def create_certificate(session: Session, data: CertificateCreate) -> GradingCertificate:
+    """Persist a new grading certificate for an existing card."""
+    certificate = GradingCertificate(**data.model_dump())
+    session.add(certificate)
+    session.commit()
+    session.refresh(certificate)
+    return certificate
+
+
+def delete_certificate(session: Session, certificate: GradingCertificate) -> None:
+    """Delete a grading certificate, leaving its card ungraded again."""
+    session.delete(certificate)
+    session.commit()

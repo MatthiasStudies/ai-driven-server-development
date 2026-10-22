@@ -162,3 +162,38 @@ class SearchResultItem(BaseModel):
     card: CardRead
     binder_name: str
     score: float
+
+
+# --- Certificates ---
+
+
+class CertificateCreate(BaseModel):
+    """Request schema for adding a grading certificate to an existing card."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "card_id": 3,
+                    "grading_company": "PSA",
+                    "cert_number": "PSA-99999999",
+                    "grade": 9.5,
+                    "graded_at": "2024-08-01",
+                }
+            ]
+        }
+    )
+
+    card_id: int = Field(gt=0, examples=[3])
+    grading_company: str = Field(min_length=1, max_length=20, examples=["PSA"])
+    cert_number: str = Field(min_length=1, max_length=50, examples=["PSA-99999999"])
+    grade: float = Field(ge=1.0, le=10.0, examples=[9.5])
+    graded_at: date = Field(examples=["2024-08-01"])
+
+    @field_validator("graded_at")
+    @classmethod
+    def validate_graded_at_not_future(cls, value: date) -> date:
+        """Reject grading dates in the future."""
+        if value > date.today():
+            raise ValueError("graded_at cannot be in the future")
+        return value
