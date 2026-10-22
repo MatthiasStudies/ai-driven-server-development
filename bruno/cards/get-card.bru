@@ -9,3 +9,14 @@ get {
   body: none
   auth: none
 }
+
+script:post-response {
+  bru.setVar("cardEtag", res.getHeader("ETag"));
+}
+
+docs {
+  Stores the response ETag in {{cardEtag}} for the conditional GET,
+  update and delete requests.
+
+  Send If-None-Match with the same ETag and the server answers 304.
+}

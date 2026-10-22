@@ -9,3 +9,12 @@ get {
   body: none
   auth: none
 }
+
+script:post-response {
+  bru.setVar("binderEtag", res.getHeader("ETag"));
+}
+
+docs {
+  Stores the response ETag in {{binderEtag}} for the update and delete
+  requests (If-Match).
+}

@@ -10,15 +10,17 @@ put {
   auth: none
 }
 
+headers {
+  If-Match: {{cardEtag}}
+}
+
 body:json {
   {
-    "version": 1,
     "variant": "Shadowless"
   }
 }
 
 docs {
-  Optimistic locking: the version must match the last GET.
-  Run once and the version becomes 2 - running again with version 1
-  returns 409 (re-GET to see the current version).
+  Run "Get card" first: it captures {{cardEtag}} and the update must
+  send it in If-Match. A missing header returns 428, a stale ETag 412.
 }

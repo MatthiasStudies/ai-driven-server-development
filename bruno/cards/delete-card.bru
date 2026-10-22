@@ -5,13 +5,18 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/cards/9?version=1
+  url: {{baseUrl}}/cards/9
   body: none
   auth: none
 }
 
+headers {
+  If-Match: {{cardEtag}}
+}
+
 docs {
-  Seed data has cards 1-8; run "Create card" first to have a card 9.
+  Seed data has cards 1-8; run "Create card" first to have a card 9,
+  then "Get card" (adjust the id) to capture its ETag.
   Deleting a card removes its grading certificate as well.
-  The version must match the last GET, otherwise 409.
+  The If-Match header is required (428 without it, 412 when stale).
 }

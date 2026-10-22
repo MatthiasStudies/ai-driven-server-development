@@ -5,13 +5,18 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/binders/4?version=1
+  url: {{baseUrl}}/binders/4
   body: none
   auth: none
 }
 
+headers {
+  If-Match: {{binderEtag}}
+}
+
 docs {
   Deleting a binder cascades to its cards and certificates.
-  Seed data has binders 1-3; run "Create binder" first to have a binder 4.
-  The version must match the last GET, otherwise 409.
+  Seed data has binders 1-3; run "Create binder" first to have a binder 4,
+  then "Get binder" (adjust the id) to capture its ETag.
+  The If-Match header is required (428 without it, 412 when stale).
 }

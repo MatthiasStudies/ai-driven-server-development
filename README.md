@@ -49,27 +49,42 @@ List endpoints support filtering (`name`, `set_name`, `rarity`, `variant`,
 - Certificates are **immutable**; a card can hold at most one (`409` on conflicts)
 - `DELETE /binders/{id}` cascades to cards and certificates
 
-## Optimistic locking
+## Conditional requests & optimistic locking
 
-Binders and cards carry a `version` counter that increments on every
-successful change. All GET responses include it, and every `PUT`/`DELETE`
-must send back the version the client last saw, so concurrent writers
-cannot silently overwrite each other:
+Every read endpoint returns an `ETag` derived from the optimistic-locking
+`version` counters (binder detail also covers the versions of its nested
+cards). Two flows build on it:
 
-```json
-PUT /binders/3
-{"version": 2, "name": "New name"}
+**Conditional GET (saves bandwidth)** — send the stored ETag back and get a
+`304 Not Modified` with no body when nothing changed:
+
+```bash
+curl -i -H 'If-None-Match: "card-1-v1"' http://localhost:8000/cards/1
 ```
 
-```text
-DELETE /cards/9?version=4
+Responses carry `Cache-Control: no-cache`: clients may store them but must
+revalidate. `If-None-Match` uses weak comparison, so `W/"…"` validators match
+too.
+
+**Safe updates and deletes** — every `PUT`/`DELETE` on binders and cards must
+send the ETag from the last GET in `If-Match`, so concurrent writers cannot
+silently overwrite each other:
+
+```bash
+curl -X PUT http://localhost:8000/cards/9 \
+  -H 'Content-Type: application/json' \
+  -H 'If-Match: "card-9-v1"' \
+  -d '{"name": "New name"}'
 ```
 
-- Missing version → `422`
-- Stale version → `409` (`Version conflict: current version is N, reload and retry`)
+- Missing `If-Match` → `428 Precondition Required`
+- Stale ETag → `412 Precondition Failed` (the detail names the current ETag)
+- `If-Match: *` matches any existing resource; weak validators never match
 - Recovery: re-GET the resource, merge your changes, retry
-- Attaching or removing a grading certificate also bumps the card's version,
-  since it changes the card's representation
+- Successful PUT responses include the new `ETag`, so requests can be chained
+  without another GET
+- Attaching or removing a grading certificate bumps the card's version, so the
+  card's ETag changes as well
 
 ## Database schema changes
 
