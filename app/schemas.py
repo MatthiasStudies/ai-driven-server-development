@@ -41,9 +41,17 @@ class BinderCreate(BaseModel):
 class BinderUpdate(BaseModel):
     """Request schema for partially updating a binder.
 
-    Fields left out keep their current values.
+    Fields left out keep their current values. The version must match the
+    one from the last read, otherwise the update is rejected with 409.
     """
 
+    version: int = Field(
+        gt=0,
+        description=(
+            "Expected version from the last GET; a 409 is returned if the "
+            "binder changed since then."
+        ),
+    )
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = None
 
@@ -57,6 +65,7 @@ class BinderRead(BaseModel):
     name: str
     description: str | None
     created_at: datetime
+    version: int
 
 
 class BinderDetail(BinderRead):
@@ -94,6 +103,7 @@ class CardRead(BaseModel):
     rarity: str
     variant: str
     acquired_at: date
+    version: int
     certificate: CertificateRead | None = None
 
 
@@ -136,9 +146,17 @@ class CardCreate(BaseModel):
 class CardUpdate(BaseModel):
     """Request schema for partially updating a card.
 
-    Fields left out keep their current values.
+    Fields left out keep their current values. The version must match the
+    one from the last read, otherwise the update is rejected with 409.
     """
 
+    version: int = Field(
+        gt=0,
+        description=(
+            "Expected version from the last GET; a 409 is returned if the "
+            "card changed since then."
+        ),
+    )
     binder_id: int | None = Field(default=None, gt=0)
     name: str | None = Field(default=None, min_length=1, max_length=100)
     set_name: str | None = Field(default=None, min_length=1, max_length=100)

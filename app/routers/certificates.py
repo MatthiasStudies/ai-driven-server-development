@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import crud
+from app.crud import StaleVersionError
 from app.db import get_db
 from app.models import GradingCertificate
 from app.schemas import CertificateCreate, CertificateRead
@@ -28,11 +29,12 @@ def create_certificate(
     data: CertificateCreate, session: Session = Depends(get_db)
 ) -> GradingCertificate:
     """Attach a grading certificate to a card that is not graded yet."""
-    if crud.get_card_with_certificate(session, data.card_id) is None:
+    card = crud.get_card_with_certificate(session, data.card_id)
+    if card is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Card not found"
         )
-    if crud.get_certificate_for_card(session, data.card_id) is not None:
+    if card.certificate is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Card is already graded"
         )
@@ -42,7 +44,11 @@ def create_certificate(
             detail="Certificate number already exists",
         )
     try:
-        return crud.create_certificate(session, data)
+        return crud.create_certificate(session, card, data)
+    except StaleVersionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
     except IntegrityError as exc:
         session.rollback()
         raise HTTPException(
@@ -113,7 +119,10 @@ def get_certificate(
     "/{certificate_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a grading certificate",
-    responses={204: {"description": "Certificate deleted; the card is ungraded."}},
+    responses={
+        204: {"description": "Certificate deleted; the card is ungraded."},
+        409: {"description": "Version conflict (card changed concurrently)"},
+    },
 )
 def delete_certificate(certificate_id: int, session: Session = Depends(get_db)) -> None:
     """Remove a grading certificate from its card."""
@@ -122,4 +131,9 @@ def delete_certificate(certificate_id: int, session: Session = Depends(get_db)) 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found"
         )
-    crud.delete_certificate(session, certificate)
+    try:
+        crud.delete_certificate(session, certificate)
+    except StaleVersionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc

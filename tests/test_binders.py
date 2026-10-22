@@ -14,6 +14,7 @@ def test_create_binder_returns_201(client: TestClient) -> None:
     assert body["name"] == "Trade Pad"
     assert body["description"] == "Pad for trades"
     assert body["id"] > 3
+    assert body["version"] == 1
     assert body["created_at"]
 
 
@@ -87,26 +88,48 @@ def test_get_missing_binder_returns_404(client: TestClient) -> None:
 
 
 def test_update_binder_is_partial(client: TestClient) -> None:
-    response = client.put("/binders/3", json={"name": "Trade Binder XL"})
+    response = client.put("/binders/3", json={"version": 1, "name": "Trade Binder XL"})
     assert response.status_code == 200
     body = response.json()
     assert body["name"] == "Trade Binder XL"
+    assert body["version"] == 2
     assert body["description"] == "Duplicates and playable cards for locals"
 
 
 def test_update_binder_can_clear_description(client: TestClient) -> None:
-    response = client.put("/binders/3", json={"description": None})
+    response = client.put("/binders/3", json={"version": 1, "description": None})
     assert response.status_code == 200
     assert response.json()["description"] is None
 
 
 def test_update_missing_binder_returns_404(client: TestClient) -> None:
-    response = client.put("/binders/999", json={"name": "X"})
+    response = client.put("/binders/999", json={"version": 1, "name": "X"})
     assert response.status_code == 404
 
 
+def test_update_binder_bumps_version_on_every_write(client: TestClient) -> None:
+    first = client.put("/binders/3", json={"version": 1, "name": "A"}).json()
+    second = client.put(
+        "/binders/3", json={"version": first["version"], "description": "B"}
+    ).json()
+    assert first["version"] == 2
+    assert second["version"] == 3
+
+
+def test_update_binder_with_stale_version_returns_409(client: TestClient) -> None:
+    client.put("/binders/3", json={"version": 1, "name": "A"})
+    response = client.put("/binders/3", json={"version": 1, "name": "B"})
+    assert response.status_code == 409
+    assert "current version is 2" in response.json()["detail"]
+
+
+def test_update_binder_requires_version(client: TestClient) -> None:
+    response = client.put("/binders/3", json={"name": "X"})
+    assert response.status_code == 422
+
+
 def test_delete_binder_cascades_to_cards(client: TestClient, database: Engine) -> None:
-    response = client.delete("/binders/1")
+    response = client.delete("/binders/1", params={"version": 1})
     assert response.status_code == 204
     assert client.get("/binders/1").status_code == 404
     with database.connect() as conn:
@@ -116,5 +139,13 @@ def test_delete_binder_cascades_to_cards(client: TestClient, database: Engine) -
     assert remaining == 0
 
 
+def test_delete_binder_with_stale_version_returns_409(client: TestClient) -> None:
+    client.put("/binders/3", json={"version": 1, "name": "A"})
+    response = client.delete("/binders/3", params={"version": 1})
+    assert response.status_code == 409
+    assert client.get("/binders/3").status_code == 200
+
+
 def test_delete_missing_binder_returns_404(client: TestClient) -> None:
-    assert client.delete("/binders/999").status_code == 404
+    response = client.delete("/binders/999", params={"version": 1})
+    assert response.status_code == 404

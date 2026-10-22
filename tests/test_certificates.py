@@ -124,10 +124,23 @@ def test_delete_certificate_allows_regrading(client: TestClient) -> None:
     assert response.status_code == 201
 
 
+def test_adding_certificate_bumps_card_version(client: TestClient) -> None:
+    before = client.get("/cards/3").json()["version"]
+    response = client.post("/certificates", json=CERT_BODY)
+    assert response.status_code == 201
+    assert client.get("/cards/3").json()["version"] == before + 1
+
+
+def test_deleting_certificate_bumps_card_version(client: TestClient) -> None:
+    before = client.get("/cards/1").json()["version"]
+    assert client.delete("/certificates/1").status_code == 204
+    assert client.get("/cards/1").json()["version"] == before + 1
+
+
 def test_delete_missing_certificate_returns_404(client: TestClient) -> None:
     assert client.delete("/certificates/999").status_code == 404
 
 
 def test_card_delete_cascades_certificate(client: TestClient) -> None:
-    assert client.delete("/cards/1").status_code == 204
+    assert client.delete("/cards/1", params={"version": 1}).status_code == 204
     assert client.get("/certificates/1").status_code == 404

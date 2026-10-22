@@ -6,9 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app import crud
+from app.crud import StaleVersionError
 from app.db import get_db
 from app.models import Binder
-from app.schemas import BinderCreate, BinderDetail, BinderRead, BinderUpdate
+from app.schemas import (
+    BinderCreate,
+    BinderDetail,
+    BinderRead,
+    BinderUpdate,
+)
 
 router = APIRouter(prefix="/binders", tags=["binders"])
 
@@ -58,17 +64,27 @@ def get_binder(binder_id: int, session: Session = Depends(get_db)) -> Binder:
     return binder
 
 
-@router.put("/{binder_id}", response_model=BinderRead, summary="Update a binder")
+@router.put(
+    "/{binder_id}",
+    response_model=BinderRead,
+    summary="Update a binder",
+    responses={409: {"description": "Version conflict (stale version)"}},
+)
 def update_binder(
     binder_id: int, data: BinderUpdate, session: Session = Depends(get_db)
 ) -> Binder:
-    """Partially update a binder; omitted fields keep their values."""
+    """Partially update a binder; the version must match the last read."""
     binder = crud.get_binder(session, binder_id)
     if binder is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Binder not found"
         )
-    return crud.update_binder(session, binder, data)
+    try:
+        return crud.update_binder(session, binder, data)
+    except StaleVersionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
 
 
 @router.delete(
@@ -76,14 +92,31 @@ def update_binder(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a binder",
     responses={
-        204: {"description": "Binder deleted (cards and certificates cascade)."}
+        204: {"description": "Binder deleted (cards and certificates cascade)."},
+        409: {"description": "Version conflict (stale version)"},
     },
 )
-def delete_binder(binder_id: int, session: Session = Depends(get_db)) -> None:
-    """Delete a binder; its cards and certificates are removed as well."""
+def delete_binder(
+    binder_id: int,
+    *,
+    version: int = Query(
+        gt=0,
+        description=(
+            "Expected version from the last GET; a 409 is returned if the "
+            "binder changed since then."
+        ),
+    ),
+    session: Session = Depends(get_db),
+) -> None:
+    """Delete a binder; the version must match the last read."""
     binder = crud.get_binder(session, binder_id)
     if binder is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Binder not found"
         )
-    crud.delete_binder(session, binder)
+    try:
+        crud.delete_binder(session, binder, version)
+    except StaleVersionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc

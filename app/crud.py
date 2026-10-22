@@ -7,6 +7,7 @@ from typing import Literal
 from rapidfuzz import fuzz, process
 from sqlalchemy import select
 from sqlalchemy.orm import InstrumentedAttribute, Session, selectinload
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.models import Binder, Card, GradingCertificate
 from app.schemas import (
@@ -40,6 +41,24 @@ def escape_like(value: str) -> str:
 def contains(value: str) -> str:
     """Wrap already escaped user input into a LIKE contains pattern."""
     return f"%{escape_like(value)}%"
+
+
+class StaleVersionError(Exception):
+    """A write was attempted against a no-longer-current version."""
+
+    def __init__(self, current_version: int | None = None) -> None:
+        if current_version is None:
+            message = (
+                "Version conflict: the resource was modified concurrently, "
+                "reload and retry"
+            )
+        else:
+            message = (
+                f"Version conflict: current version is {current_version}, "
+                "reload and retry"
+            )
+        super().__init__(message)
+        self.current_version = current_version
 
 
 def get_binder(session: Session, binder_id: int) -> Binder | None:
@@ -95,18 +114,40 @@ def create_binder(session: Session, data: BinderCreate) -> Binder:
 
 
 def update_binder(session: Session, binder: Binder, data: BinderUpdate) -> Binder:
-    """Apply a partial update to a binder."""
-    for key, value in data.model_dump(exclude_unset=True).items():
+    """Apply a partial update, protected against lost updates.
+
+    Raises ``StaleVersionError`` if the version sent by the client does not
+    match, or if the row changed between loading and committing.
+    """
+    if binder.version != data.version:
+        raise StaleVersionError(binder.version)
+    values = data.model_dump(exclude_unset=True)
+    values.pop("version", None)
+    for key, value in values.items():
         setattr(binder, key, value)
-    session.commit()
+    binder.version = binder.version + 1
+    try:
+        session.commit()
+    except StaleDataError as exc:
+        session.rollback()
+        raise StaleVersionError(binder.version) from exc
     session.refresh(binder)
     return binder
 
 
-def delete_binder(session: Session, binder: Binder) -> None:
-    """Delete a binder; the database cascades to cards and certificates."""
+def delete_binder(session: Session, binder: Binder, expected_version: int) -> None:
+    """Delete a binder, protected against lost updates.
+
+    The database cascades to cards and certificates.
+    """
+    if binder.version != expected_version:
+        raise StaleVersionError(binder.version)
     session.delete(binder)
-    session.commit()
+    try:
+        session.commit()
+    except StaleDataError as exc:
+        session.rollback()
+        raise StaleVersionError from exc
 
 
 # --- Cards ---
@@ -172,18 +213,36 @@ def create_card(session: Session, data: CardCreate) -> Card:
 
 
 def update_card(session: Session, card: Card, data: CardUpdate) -> Card:
-    """Apply a partial update to a card."""
-    for key, value in data.model_dump(exclude_unset=True).items():
+    """Apply a partial update, protected against lost updates."""
+    if card.version != data.version:
+        raise StaleVersionError(card.version)
+    values = data.model_dump(exclude_unset=True)
+    values.pop("version", None)
+    for key, value in values.items():
         setattr(card, key, value)
-    session.commit()
+    card.version = card.version + 1
+    try:
+        session.commit()
+    except StaleDataError as exc:
+        session.rollback()
+        raise StaleVersionError(card.version) from exc
     session.refresh(card)
     return card
 
 
-def delete_card(session: Session, card: Card) -> None:
-    """Delete a card; the database cascades its certificate."""
+def delete_card(session: Session, card: Card, expected_version: int) -> None:
+    """Delete a card, protected against lost updates.
+
+    The database cascades its certificate.
+    """
+    if card.version != expected_version:
+        raise StaleVersionError(card.version)
     session.delete(card)
-    session.commit()
+    try:
+        session.commit()
+    except StaleDataError as exc:
+        session.rollback()
+        raise StaleVersionError from exc
 
 
 def search_cards(
@@ -223,14 +282,6 @@ def search_cards(
 def get_certificate(session: Session, certificate_id: int) -> GradingCertificate | None:
     """Return the certificate with the given id, or None."""
     return session.get(GradingCertificate, certificate_id)
-
-
-def get_certificate_for_card(
-    session: Session, card_id: int
-) -> GradingCertificate | None:
-    """Return the certificate attached to the given card, or None."""
-    stmt = select(GradingCertificate).where(GradingCertificate.card_id == card_id)
-    return session.scalars(stmt).first()
 
 
 def get_certificate_by_cert_number(
@@ -292,16 +343,36 @@ def list_certificates(
     return session.scalars(stmt.limit(limit).offset(offset)).all()
 
 
-def create_certificate(session: Session, data: CertificateCreate) -> GradingCertificate:
-    """Persist a new grading certificate for an existing card."""
+def create_certificate(
+    session: Session, card: Card, data: CertificateCreate
+) -> GradingCertificate:
+    """Persist a new grading certificate; bumps the card's version.
+
+    Attaching a certificate changes the card's GET representation, so a
+    concurrent card update conflicts instead of being lost.
+    """
     certificate = GradingCertificate(**data.model_dump())
     session.add(certificate)
-    session.commit()
+    card.version = card.version + 1
+    try:
+        session.commit()
+    except StaleDataError as exc:
+        session.rollback()
+        raise StaleVersionError(card.version) from exc
     session.refresh(certificate)
     return certificate
 
 
 def delete_certificate(session: Session, certificate: GradingCertificate) -> None:
-    """Delete a grading certificate, leaving its card ungraded again."""
+    """Delete a grading certificate; bumps the card's version.
+
+    The card becomes ungraded again, which is also a visible change.
+    """
+    card = certificate.card
+    card.version = card.version + 1
     session.delete(certificate)
-    session.commit()
+    try:
+        session.commit()
+    except StaleDataError as exc:
+        session.rollback()
+        raise StaleVersionError(card.version) from exc

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app import crud
+from app.crud import StaleVersionError
 from app.db import get_db
 from app.models import Card
 from app.schemas import CardCreate, CardRead, CardUpdate
@@ -99,11 +100,16 @@ def get_card(card_id: int, session: Session = Depends(get_db)) -> Card:
     return card
 
 
-@router.put("/{card_id}", response_model=CardRead, summary="Update a card")
+@router.put(
+    "/{card_id}",
+    response_model=CardRead,
+    summary="Update a card",
+    responses={409: {"description": "Version conflict (stale version)"}},
+)
 def update_card(
     card_id: int, data: CardUpdate, session: Session = Depends(get_db)
 ) -> Card:
-    """Partially update a card; omitted fields keep their values."""
+    """Partially update a card; the version must match the last read."""
     card = crud.get_card_with_certificate(session, card_id)
     if card is None:
         raise HTTPException(
@@ -113,20 +119,44 @@ def update_card(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Binder not found"
         )
-    return crud.update_card(session, card, data)
+    try:
+        return crud.update_card(session, card, data)
+    except StaleVersionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
 
 
 @router.delete(
     "/{card_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a card",
-    responses={204: {"description": "Card deleted (its certificate cascades)."}},
+    responses={
+        204: {"description": "Card deleted (its certificate cascades)."},
+        409: {"description": "Version conflict (stale version)"},
+    },
 )
-def delete_card(card_id: int, session: Session = Depends(get_db)) -> None:
-    """Delete a card; a grading certificate is removed as well."""
+def delete_card(
+    card_id: int,
+    *,
+    version: int = Query(
+        gt=0,
+        description=(
+            "Expected version from the last GET; a 409 is returned if the "
+            "card changed since then."
+        ),
+    ),
+    session: Session = Depends(get_db),
+) -> None:
+    """Delete a card; the version must match the last read."""
     card = crud.get_card_with_certificate(session, card_id)
     if card is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Card not found"
         )
-    crud.delete_card(session, card)
+    try:
+        crud.delete_card(session, card, version)
+    except StaleVersionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc

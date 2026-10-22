@@ -21,6 +21,7 @@ def test_create_card_applies_defaults(client: TestClient) -> None:
     assert body["binder_id"] == 1
     assert body["variant"] == "Standard"
     assert body["acquired_at"] == date.today().isoformat()
+    assert body["version"] == 1
     assert body["certificate"] is None
 
 
@@ -142,16 +143,17 @@ def test_get_missing_card_returns_404(client: TestClient) -> None:
 
 
 def test_update_card_is_partial(client: TestClient) -> None:
-    response = client.put("/cards/3", json={"name": "Blastoise (Base)"})
+    response = client.put("/cards/3", json={"version": 1, "name": "Blastoise (Base)"})
     assert response.status_code == 200
     body = response.json()
     assert body["name"] == "Blastoise (Base)"
+    assert body["version"] == 2
     assert body["variant"] == "Unlimited"
     assert body["set_name"] == "Base Set"
 
 
 def test_update_card_can_move_binder(client: TestClient) -> None:
-    response = client.put("/cards/3", json={"binder_id": 2})
+    response = client.put("/cards/3", json={"version": 1, "binder_id": 2})
     assert response.status_code == 200
     assert response.json()["binder_id"] == 2
     binder_cards = client.get("/binders/2").json()["cards"]
@@ -159,21 +161,53 @@ def test_update_card_can_move_binder(client: TestClient) -> None:
 
 
 def test_update_card_to_missing_binder_returns_404(client: TestClient) -> None:
-    response = client.put("/cards/3", json={"binder_id": 999})
+    response = client.put("/cards/3", json={"version": 1, "binder_id": 999})
     assert response.status_code == 404
 
 
 def test_update_missing_card_returns_404(client: TestClient) -> None:
-    assert client.put("/cards/999", json={"name": "X"}).status_code == 404
+    response = client.put("/cards/999", json={"version": 1, "name": "X"})
+    assert response.status_code == 404
+
+
+def test_update_card_bumps_version_on_every_write(client: TestClient) -> None:
+    first = client.put(
+        "/cards/3", json={"version": 1, "name": "Blastoise (Base)"}
+    ).json()
+    second = client.put(
+        "/cards/3", json={"version": first["version"], "variant": "Shadowless"}
+    ).json()
+    assert first["version"] == 2
+    assert second["version"] == 3
+
+
+def test_update_card_with_stale_version_returns_409(client: TestClient) -> None:
+    client.put("/cards/3", json={"version": 1, "name": "A"})
+    response = client.put("/cards/3", json={"version": 1, "name": "B"})
+    assert response.status_code == 409
+    assert "current version is 2" in response.json()["detail"]
+
+
+def test_update_card_requires_version(client: TestClient) -> None:
+    response = client.put("/cards/3", json={"name": "X"})
+    assert response.status_code == 422
 
 
 def test_delete_card(client: TestClient) -> None:
-    assert client.delete("/cards/3").status_code == 204
+    assert client.delete("/cards/3", params={"version": 1}).status_code == 204
     assert client.get("/cards/3").status_code == 404
 
 
+def test_delete_card_with_stale_version_returns_409(client: TestClient) -> None:
+    client.put("/cards/3", json={"version": 1, "name": "A"})
+    response = client.delete("/cards/3", params={"version": 1})
+    assert response.status_code == 409
+    assert client.get("/cards/3").status_code == 200
+
+
 def test_delete_missing_card_returns_404(client: TestClient) -> None:
-    assert client.delete("/cards/999").status_code == 404
+    response = client.delete("/cards/999", params={"version": 1})
+    assert response.status_code == 404
 
 
 def test_search_finds_card_despite_typo(client: TestClient) -> None:
