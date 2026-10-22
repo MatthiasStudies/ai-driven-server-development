@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import db
+from app.routers import binders
 from app.schemas import HealthStatus
 
 app = FastAPI(
@@ -16,6 +17,9 @@ app = FastAPI(
         {"name": "meta", "description": "Service health and metadata."},
     ],
 )
+
+
+app.include_router(binders.router)
 
 
 @app.get(
