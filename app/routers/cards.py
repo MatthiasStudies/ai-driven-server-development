@@ -3,7 +3,15 @@
 from collections.abc import Sequence
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app import conditional, crud
@@ -17,6 +25,12 @@ router = APIRouter(
     tags=["cards"],
     route_class=conditional.ConditionalGetRoute,
 )
+
+IF_MATCH_DESCRIPTION = "ETag from the last GET of this card."
+
+
+def _card_etag(card: Card) -> str:
+    return conditional.etag_for("card", card.id, card.version)
 
 
 @router.post(
@@ -124,7 +138,7 @@ def get_card(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Card not found"
         )
-    response.headers["ETag"] = conditional.etag_for("card", card.id, card.version)
+    response.headers["ETag"] = _card_etag(card)
     return card
 
 
@@ -132,27 +146,40 @@ def get_card(
     "/{card_id}",
     response_model=CardRead,
     summary="Update a card",
-    responses={409: {"description": "Version conflict (stale version)"}},
+    responses={
+        200: {"headers": conditional.RESPONSE_HEADERS_ETAG},
+        412: {"description": "Precondition failed (stale If-Match)"},
+        428: {"description": "If-Match header missing"},
+    },
 )
 def update_card(
-    card_id: int, data: CardUpdate, session: Session = Depends(get_db)
+    card_id: int,
+    data: CardUpdate,
+    response: Response,
+    session: Session = Depends(get_db),
+    if_match: str | None = Header(
+        default=None, alias="If-Match", description=IF_MATCH_DESCRIPTION
+    ),
 ) -> Card:
-    """Partially update a card; the version must match the last read."""
+    """Partially update a card guarded by the If-Match precondition."""
     card = crud.get_card_with_certificate(session, card_id)
     if card is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Card not found"
         )
+    conditional.enforce_if_match(if_match, _card_etag(card))
     if data.binder_id is not None and crud.get_binder(session, data.binder_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Binder not found"
         )
     try:
-        return crud.update_card(session, card, data)
+        updated = crud.update_card(session, card, data)
     except StaleVersionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            status_code=status.HTTP_412_PRECONDITION_FAILED, detail=str(exc)
         ) from exc
+    response.headers["ETag"] = _card_etag(updated)
+    return updated
 
 
 @router.delete(
@@ -161,30 +188,27 @@ def update_card(
     summary="Delete a card",
     responses={
         204: {"description": "Card deleted (its certificate cascades)."},
-        409: {"description": "Version conflict (stale version)"},
+        412: {"description": "Precondition failed (stale If-Match)"},
+        428: {"description": "If-Match header missing"},
     },
 )
 def delete_card(
     card_id: int,
-    *,
-    version: int = Query(
-        gt=0,
-        description=(
-            "Expected version from the last GET; a 409 is returned if the "
-            "card changed since then."
-        ),
-    ),
     session: Session = Depends(get_db),
+    if_match: str | None = Header(
+        default=None, alias="If-Match", description=IF_MATCH_DESCRIPTION
+    ),
 ) -> None:
-    """Delete a card; the version must match the last read."""
+    """Delete a card guarded by the If-Match precondition."""
     card = crud.get_card_with_certificate(session, card_id)
     if card is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Card not found"
         )
+    conditional.enforce_if_match(if_match, _card_etag(card))
     try:
-        crud.delete_card(session, card, version)
+        crud.delete_card(session, card)
     except StaleVersionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            status_code=status.HTTP_412_PRECONDITION_FAILED, detail=str(exc)
         ) from exc

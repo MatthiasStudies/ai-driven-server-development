@@ -104,7 +104,12 @@ def test_unchanged_binder_detail_returns_304(client: TestClient) -> None:
 
 def test_nested_card_change_invalidates_binder_detail(client: TestClient) -> None:
     etag = client.get("/binders/1").headers["etag"]
-    client.put("/cards/1", json={"version": 1, "name": "Charizard (Base)"})
+    card_etag = client.get("/cards/1").headers["etag"]
+    client.put(
+        "/cards/1",
+        json={"name": "Charizard (Base)"},
+        headers={"If-Match": card_etag},
+    )
     response = client.get("/binders/1", headers={"If-None-Match": etag})
     assert response.status_code == 200
     assert response.headers["etag"] != etag
@@ -128,7 +133,12 @@ def test_card_creation_invalidates_cards_list(client: TestClient) -> None:
 
 def test_binder_rename_invalidates_search_results(client: TestClient) -> None:
     etag = client.get("/search", params={"q": "charizard"}).headers["etag"]
-    client.put("/binders/1", json={"version": 1, "name": "Renamed Vault"})
+    binder_etag = client.get("/binders/1").headers["etag"]
+    client.put(
+        "/binders/1",
+        json={"name": "Renamed Vault"},
+        headers={"If-Match": binder_etag},
+    )
     response = client.get(
         "/search", params={"q": "charizard"}, headers={"If-None-Match": etag}
     )
@@ -139,8 +149,8 @@ def test_non_get_requests_never_return_304(client: TestClient) -> None:
     etag = client.get("/cards/3").headers["etag"]
     response = client.put(
         "/cards/3",
-        json={"version": 1, "name": "Blastoise (Base)"},
-        headers={"If-None-Match": etag},
+        json={"name": "Blastoise (Base)"},
+        headers={"If-Match": etag, "If-None-Match": etag},
     )
     assert response.status_code == 200
 

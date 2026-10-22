@@ -41,17 +41,12 @@ class BinderCreate(BaseModel):
 class BinderUpdate(BaseModel):
     """Request schema for partially updating a binder.
 
-    Fields left out keep their current values. The version must match the
-    one from the last read, otherwise the update is rejected with 409.
+    Fields left out keep their current values. Send the ETag from the last
+    GET in the ``If-Match`` header; a mismatch is rejected with 412.
     """
 
-    version: int = Field(
-        gt=0,
-        description=(
-            "Expected version from the last GET; a 409 is returned if the "
-            "binder changed since then."
-        ),
-    )
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = None
 
@@ -146,17 +141,12 @@ class CardCreate(BaseModel):
 class CardUpdate(BaseModel):
     """Request schema for partially updating a card.
 
-    Fields left out keep their current values. The version must match the
-    one from the last read, otherwise the update is rejected with 409.
+    Fields left out keep their current values. Send the ETag from the last
+    GET in the ``If-Match`` header; a mismatch is rejected with 412.
     """
 
-    version: int = Field(
-        gt=0,
-        description=(
-            "Expected version from the last GET; a 409 is returned if the "
-            "card changed since then."
-        ),
-    )
+    model_config = ConfigDict(extra="forbid")
+
     binder_id: int | None = Field(default=None, gt=0)
     name: str | None = Field(default=None, min_length=1, max_length=100)
     set_name: str | None = Field(default=None, min_length=1, max_length=100)

@@ -142,5 +142,6 @@ def test_delete_missing_certificate_returns_404(client: TestClient) -> None:
 
 
 def test_card_delete_cascades_certificate(client: TestClient) -> None:
-    assert client.delete("/cards/1", params={"version": 1}).status_code == 204
+    etag = client.get("/cards/1").headers["etag"]
+    assert client.delete("/cards/1", headers={"If-Match": etag}).status_code == 204
     assert client.get("/certificates/1").status_code == 404

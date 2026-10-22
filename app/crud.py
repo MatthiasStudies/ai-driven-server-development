@@ -114,16 +114,12 @@ def create_binder(session: Session, data: BinderCreate) -> Binder:
 
 
 def update_binder(session: Session, binder: Binder, data: BinderUpdate) -> Binder:
-    """Apply a partial update, protected against lost updates.
+    """Apply a partial update; the router enforces the If-Match precondition.
 
-    Raises ``StaleVersionError`` if the version sent by the client does not
-    match, or if the row changed between loading and committing.
+    The version bump plus SQLAlchemy's ``version_id_col`` check still guard
+    against races between loading and committing.
     """
-    if binder.version != data.version:
-        raise StaleVersionError(binder.version)
-    values = data.model_dump(exclude_unset=True)
-    values.pop("version", None)
-    for key, value in values.items():
+    for key, value in data.model_dump(exclude_unset=True).items():
         setattr(binder, key, value)
     binder.version = binder.version + 1
     try:
@@ -135,13 +131,8 @@ def update_binder(session: Session, binder: Binder, data: BinderUpdate) -> Binde
     return binder
 
 
-def delete_binder(session: Session, binder: Binder, expected_version: int) -> None:
-    """Delete a binder, protected against lost updates.
-
-    The database cascades to cards and certificates.
-    """
-    if binder.version != expected_version:
-        raise StaleVersionError(binder.version)
+def delete_binder(session: Session, binder: Binder) -> None:
+    """Delete a binder; the database cascades to cards and certificates."""
     session.delete(binder)
     try:
         session.commit()
@@ -213,12 +204,8 @@ def create_card(session: Session, data: CardCreate) -> Card:
 
 
 def update_card(session: Session, card: Card, data: CardUpdate) -> Card:
-    """Apply a partial update, protected against lost updates."""
-    if card.version != data.version:
-        raise StaleVersionError(card.version)
-    values = data.model_dump(exclude_unset=True)
-    values.pop("version", None)
-    for key, value in values.items():
+    """Apply a partial update; the router enforces the If-Match precondition."""
+    for key, value in data.model_dump(exclude_unset=True).items():
         setattr(card, key, value)
     card.version = card.version + 1
     try:
@@ -230,13 +217,8 @@ def update_card(session: Session, card: Card, data: CardUpdate) -> Card:
     return card
 
 
-def delete_card(session: Session, card: Card, expected_version: int) -> None:
-    """Delete a card, protected against lost updates.
-
-    The database cascades its certificate.
-    """
-    if card.version != expected_version:
-        raise StaleVersionError(card.version)
+def delete_card(session: Session, card: Card) -> None:
+    """Delete a card; the database cascades its certificate."""
     session.delete(card)
     try:
         session.commit()

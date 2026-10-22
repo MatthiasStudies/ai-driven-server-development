@@ -87,49 +87,96 @@ def test_get_missing_binder_returns_404(client: TestClient) -> None:
     assert response.json()["detail"] == "Binder not found"
 
 
+def _binder_etag(client: TestClient, binder_id: int) -> str:
+    return client.get(f"/binders/{binder_id}").headers["etag"]
+
+
 def test_update_binder_is_partial(client: TestClient) -> None:
-    response = client.put("/binders/3", json={"version": 1, "name": "Trade Binder XL"})
+    response = client.put(
+        "/binders/3",
+        json={"name": "Trade Binder XL"},
+        headers={"If-Match": _binder_etag(client, 3)},
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["name"] == "Trade Binder XL"
     assert body["version"] == 2
     assert body["description"] == "Duplicates and playable cards for locals"
+    assert response.headers["etag"].startswith('"binder-3-v2')
 
 
 def test_update_binder_can_clear_description(client: TestClient) -> None:
-    response = client.put("/binders/3", json={"version": 1, "description": None})
+    response = client.put(
+        "/binders/3",
+        json={"description": None},
+        headers={"If-Match": _binder_etag(client, 3)},
+    )
     assert response.status_code == 200
     assert response.json()["description"] is None
 
 
 def test_update_missing_binder_returns_404(client: TestClient) -> None:
-    response = client.put("/binders/999", json={"version": 1, "name": "X"})
+    response = client.put("/binders/999", json={"name": "X"}, headers={"If-Match": "*"})
     assert response.status_code == 404
 
 
 def test_update_binder_bumps_version_on_every_write(client: TestClient) -> None:
-    first = client.put("/binders/3", json={"version": 1, "name": "A"}).json()
+    first = client.put(
+        "/binders/3",
+        json={"name": "A"},
+        headers={"If-Match": _binder_etag(client, 3)},
+    )
+    assert first.status_code == 200
+    assert first.json()["version"] == 2
     second = client.put(
-        "/binders/3", json={"version": first["version"], "description": "B"}
-    ).json()
-    assert first["version"] == 2
-    assert second["version"] == 3
+        "/binders/3",
+        json={"description": "B"},
+        headers={"If-Match": first.headers["etag"]},
+    )
+    assert second.status_code == 200
+    assert second.json()["version"] == 3
+    assert second.headers["etag"] != first.headers["etag"]
 
 
-def test_update_binder_with_stale_version_returns_409(client: TestClient) -> None:
-    client.put("/binders/3", json={"version": 1, "name": "A"})
-    response = client.put("/binders/3", json={"version": 1, "name": "B"})
-    assert response.status_code == 409
-    assert "current version is 2" in response.json()["detail"]
+def test_update_binder_with_stale_etag_returns_412(client: TestClient) -> None:
+    stale = _binder_etag(client, 3)
+    client.put("/binders/3", json={"name": "A"}, headers={"If-Match": stale})
+    response = client.put("/binders/3", json={"name": "B"}, headers={"If-Match": stale})
+    assert response.status_code == 412
+    assert "current ETag is" in response.json()["detail"]
 
 
-def test_update_binder_requires_version(client: TestClient) -> None:
+def test_update_binder_requires_if_match(client: TestClient) -> None:
     response = client.put("/binders/3", json={"name": "X"})
+    assert response.status_code == 428
+
+
+def test_update_binder_accepts_wildcard_if_match(client: TestClient) -> None:
+    response = client.put("/binders/3", json={"name": "X"}, headers={"If-Match": "*"})
+    assert response.status_code == 200
+
+
+def test_update_binder_rejects_weak_etag(client: TestClient) -> None:
+    etag = _binder_etag(client, 3)
+    response = client.put(
+        "/binders/3", json={"name": "X"}, headers={"If-Match": f"W/{etag}"}
+    )
+    assert response.status_code == 412
+
+
+def test_update_binder_rejects_legacy_version_field(client: TestClient) -> None:
+    response = client.put(
+        "/binders/3",
+        json={"version": 1, "name": "X"},
+        headers={"If-Match": _binder_etag(client, 3)},
+    )
     assert response.status_code == 422
 
 
 def test_delete_binder_cascades_to_cards(client: TestClient, database: Engine) -> None:
-    response = client.delete("/binders/1", params={"version": 1})
+    response = client.delete(
+        "/binders/1", headers={"If-Match": _binder_etag(client, 1)}
+    )
     assert response.status_code == 204
     assert client.get("/binders/1").status_code == 404
     with database.connect() as conn:
@@ -139,13 +186,18 @@ def test_delete_binder_cascades_to_cards(client: TestClient, database: Engine) -
     assert remaining == 0
 
 
-def test_delete_binder_with_stale_version_returns_409(client: TestClient) -> None:
-    client.put("/binders/3", json={"version": 1, "name": "A"})
-    response = client.delete("/binders/3", params={"version": 1})
-    assert response.status_code == 409
+def test_delete_binder_with_stale_etag_returns_412(client: TestClient) -> None:
+    stale = _binder_etag(client, 3)
+    client.put("/binders/3", json={"name": "A"}, headers={"If-Match": stale})
+    response = client.delete("/binders/3", headers={"If-Match": stale})
+    assert response.status_code == 412
     assert client.get("/binders/3").status_code == 200
 
 
+def test_delete_binder_requires_if_match(client: TestClient) -> None:
+    assert client.delete("/binders/3").status_code == 428
+
+
 def test_delete_missing_binder_returns_404(client: TestClient) -> None:
-    response = client.delete("/binders/999", params={"version": 1})
+    response = client.delete("/binders/999", headers={"If-Match": "*"})
     assert response.status_code == 404

@@ -2,7 +2,15 @@
 
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app import conditional, crud
@@ -21,6 +29,17 @@ router = APIRouter(
     tags=["binders"],
     route_class=conditional.ConditionalGetRoute,
 )
+
+IF_MATCH_DESCRIPTION = "ETag from the last GET of this binder."
+
+
+def _binder_etag(binder: Binder) -> str:
+    return conditional.etag_for_children(
+        "binder",
+        binder.id,
+        binder.version,
+        [(card.id, card.version) for card in binder.cards],
+    )
 
 
 @router.post(
@@ -88,12 +107,7 @@ def get_binder(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Binder not found"
         )
-    response.headers["ETag"] = conditional.etag_for_children(
-        "binder",
-        binder.id,
-        binder.version,
-        [(card.id, card.version) for card in binder.cards],
-    )
+    response.headers["ETag"] = _binder_etag(binder)
     return binder
 
 
@@ -101,23 +115,36 @@ def get_binder(
     "/{binder_id}",
     response_model=BinderRead,
     summary="Update a binder",
-    responses={409: {"description": "Version conflict (stale version)"}},
+    responses={
+        200: {"headers": conditional.RESPONSE_HEADERS_ETAG},
+        412: {"description": "Precondition failed (stale If-Match)"},
+        428: {"description": "If-Match header missing"},
+    },
 )
 def update_binder(
-    binder_id: int, data: BinderUpdate, session: Session = Depends(get_db)
+    binder_id: int,
+    data: BinderUpdate,
+    response: Response,
+    session: Session = Depends(get_db),
+    if_match: str | None = Header(
+        default=None, alias="If-Match", description=IF_MATCH_DESCRIPTION
+    ),
 ) -> Binder:
-    """Partially update a binder; the version must match the last read."""
-    binder = crud.get_binder(session, binder_id)
+    """Partially update a binder guarded by the If-Match precondition."""
+    binder = crud.get_binder_with_cards(session, binder_id)
     if binder is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Binder not found"
         )
+    conditional.enforce_if_match(if_match, _binder_etag(binder))
     try:
-        return crud.update_binder(session, binder, data)
+        updated = crud.update_binder(session, binder, data)
     except StaleVersionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            status_code=status.HTTP_412_PRECONDITION_FAILED, detail=str(exc)
         ) from exc
+    response.headers["ETag"] = _binder_etag(updated)
+    return updated
 
 
 @router.delete(
@@ -126,30 +153,27 @@ def update_binder(
     summary="Delete a binder",
     responses={
         204: {"description": "Binder deleted (cards and certificates cascade)."},
-        409: {"description": "Version conflict (stale version)"},
+        412: {"description": "Precondition failed (stale If-Match)"},
+        428: {"description": "If-Match header missing"},
     },
 )
 def delete_binder(
     binder_id: int,
-    *,
-    version: int = Query(
-        gt=0,
-        description=(
-            "Expected version from the last GET; a 409 is returned if the "
-            "binder changed since then."
-        ),
-    ),
     session: Session = Depends(get_db),
+    if_match: str | None = Header(
+        default=None, alias="If-Match", description=IF_MATCH_DESCRIPTION
+    ),
 ) -> None:
-    """Delete a binder; the version must match the last read."""
-    binder = crud.get_binder(session, binder_id)
+    """Delete a binder guarded by the If-Match precondition."""
+    binder = crud.get_binder_with_cards(session, binder_id)
     if binder is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Binder not found"
         )
+    conditional.enforce_if_match(if_match, _binder_etag(binder))
     try:
-        crud.delete_binder(session, binder, version)
+        crud.delete_binder(session, binder)
     except StaleVersionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+            status_code=status.HTTP_412_PRECONDITION_FAILED, detail=str(exc)
         ) from exc
