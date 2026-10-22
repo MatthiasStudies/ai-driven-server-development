@@ -1,0 +1,16 @@
+meta {
+  name: Delete certificate
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/certificates/5
+  body: none
+  auth: none
+}
+
+docs {
+  Seed data has certificates 1-4; run "Add certificate to card" first
+  to have a certificate 5. The card becomes ungraded again.
+}

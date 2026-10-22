@@ -1,0 +1,16 @@
+meta {
+  name: Quicksearch cards
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/search?q=charzard
+  body: none
+  auth: none
+}
+
+docs {
+  Fuzzy search over card name, set name and collector number
+  (rapidfuzz ranking, typos welcome).
+}

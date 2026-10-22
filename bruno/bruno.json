@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "tcg-card-stack",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

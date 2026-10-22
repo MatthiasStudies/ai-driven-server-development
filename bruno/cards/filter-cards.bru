@@ -1,0 +1,16 @@
+meta {
+  name: Filter cards
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/cards?rarity=Holo%20Rare&acquired_from=2022-01-01
+  body: none
+  auth: none
+}
+
+docs {
+  name/set_name are case-insensitive substring filters,
+  rarity/variant are case-insensitive exact filters.
+}

@@ -1,0 +1,16 @@
+meta {
+  name: Delete card
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/cards/9
+  body: none
+  auth: none
+}
+
+docs {
+  Seed data has cards 1-8; run "Create card" first to have a card 9.
+  Deleting a card removes its grading certificate as well.
+}

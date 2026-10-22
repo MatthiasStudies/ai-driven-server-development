@@ -1,0 +1,11 @@
+meta {
+  name: List cards
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/cards?order_by=acquired_at&order=desc
+  body: none
+  auth: none
+}

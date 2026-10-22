@@ -1,0 +1,16 @@
+meta {
+  name: Delete binder
+  type: http
+  seq: 6
+}
+
+delete {
+  url: {{baseUrl}}/binders/4
+  body: none
+  auth: none
+}
+
+docs {
+  Deleting a binder cascades to its cards and certificates.
+  Seed data has binders 1-3; run "Create binder" first to have a binder 4.
+}

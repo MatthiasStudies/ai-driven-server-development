@@ -1,0 +1,11 @@
+meta {
+  name: Filter certificates
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/certificates?grading_company=PSA&grade_min=9.5
+  body: none
+  auth: none
+}

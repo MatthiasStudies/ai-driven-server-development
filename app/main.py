@@ -15,6 +15,16 @@ app = FastAPI(
     description="A TCG card collection management server.",
     openapi_tags=[
         {"name": "meta", "description": "Service health and metadata."},
+        {
+            "name": "binders",
+            "description": "Create, inspect, update and delete binders.",
+        },
+        {"name": "cards", "description": "Create, inspect, update and delete cards."},
+        {
+            "name": "certificates",
+            "description": "Attach grading certificates to existing cards.",
+        },
+        {"name": "search", "description": "Fuzzy quicksearch across all cards."},
     ],
 )
 
