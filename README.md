@@ -69,6 +69,12 @@ make typecheck   # ty
 make check       # lint + typecheck + test
 ```
 
+## Continuous integration
+
+Every pull request runs the static quality gates via GitHub Actions
+(`.github/workflows/qa.yml`): `ruff check` (static analysis),
+`ruff format --check` (code style) and `ty` (typechecking).
+
 ## Bruno collection
 
 Open the `bruno/` folder in [Bruno](https://www.usebruno.com/) and pick the
