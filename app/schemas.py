@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class HealthStatus(BaseModel):
@@ -95,3 +95,70 @@ class CardRead(BaseModel):
     variant: str
     acquired_at: date
     certificate: CertificateRead | None = None
+
+
+class CardCreate(BaseModel):
+    """Request schema for creating a card."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "binder_id": 1,
+                    "name": "Gengar",
+                    "set_name": "Fossil",
+                    "collector_number": "5/62",
+                    "rarity": "Holo Rare",
+                    "variant": "1st Edition",
+                    "acquired_at": "2024-01-15",
+                }
+            ]
+        }
+    )
+
+    binder_id: int = Field(gt=0, examples=[1])
+    name: str = Field(min_length=1, max_length=100, examples=["Gengar"])
+    set_name: str = Field(min_length=1, max_length=100, examples=["Fossil"])
+    collector_number: str = Field(min_length=1, max_length=20, examples=["5/62"])
+    rarity: str = Field(min_length=1, max_length=50, examples=["Holo Rare"])
+    variant: str = Field(default="Standard", max_length=50, examples=["1st Edition"])
+    acquired_at: date | None = Field(default=None, examples=["2024-01-15"])
+
+    @field_validator("acquired_at")
+    @classmethod
+    def validate_acquired_at_not_future(cls, value: date | None) -> date | None:
+        """Reject acquisition dates in the future."""
+        if value is not None and value > date.today():
+            raise ValueError("acquired_at cannot be in the future")
+        return value
+
+
+class CardUpdate(BaseModel):
+    """Request schema for partially updating a card.
+
+    Fields left out keep their current values.
+    """
+
+    binder_id: int | None = Field(default=None, gt=0)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    set_name: str | None = Field(default=None, min_length=1, max_length=100)
+    collector_number: str | None = Field(default=None, min_length=1, max_length=20)
+    rarity: str | None = Field(default=None, min_length=1, max_length=50)
+    variant: str | None = Field(default=None, max_length=50)
+    acquired_at: date | None = None
+
+    @field_validator("acquired_at")
+    @classmethod
+    def validate_acquired_at_not_future(cls, value: date | None) -> date | None:
+        """Reject acquisition dates in the future."""
+        if value is not None and value > date.today():
+            raise ValueError("acquired_at cannot be in the future")
+        return value
+
+
+class SearchResultItem(BaseModel):
+    """A single quicksearch hit with its fuzzy match score (0-100)."""
+
+    card: CardRead
+    binder_name: str
+    score: float
