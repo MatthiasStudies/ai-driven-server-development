@@ -5,7 +5,7 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/cards/9
+  url: {{baseUrl}}/cards/9?version=1
   body: none
   auth: none
 }
@@ -13,4 +13,5 @@ delete {
 docs {
   Seed data has cards 1-8; run "Create card" first to have a card 9.
   Deleting a card removes its grading certificate as well.
+  The version must match the last GET, otherwise 409.
 }

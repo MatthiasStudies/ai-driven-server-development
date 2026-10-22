@@ -49,6 +49,28 @@ List endpoints support filtering (`name`, `set_name`, `rarity`, `variant`,
 - Certificates are **immutable**; a card can hold at most one (`409` on conflicts)
 - `DELETE /binders/{id}` cascades to cards and certificates
 
+## Optimistic locking
+
+Binders and cards carry a `version` counter that increments on every
+successful change. All GET responses include it, and every `PUT`/`DELETE`
+must send back the version the client last saw, so concurrent writers
+cannot silently overwrite each other:
+
+```json
+PUT /binders/3
+{"version": 2, "name": "New name"}
+```
+
+```text
+DELETE /cards/9?version=4
+```
+
+- Missing version → `422`
+- Stale version → `409` (`Version conflict: current version is N, reload and retry`)
+- Recovery: re-GET the resource, merge your changes, retry
+- Attaching or removing a grading certificate also bumps the card's version,
+  since it changes the card's representation
+
 ## Database schema changes
 
 The schema lives in `postgres-data/init.sql` and is applied on first container

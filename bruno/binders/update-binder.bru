@@ -12,6 +12,13 @@ put {
 
 body:json {
   {
+    "version": 1,
     "name": "Trade Binder XL"
   }
+}
+
+docs {
+  Optimistic locking: the version must match the last GET.
+  Run once and the version becomes 2 - running again with version 1
+  returns 409 (re-GET to see the current version).
 }
