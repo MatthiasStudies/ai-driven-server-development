@@ -2,17 +2,21 @@
 
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import crud
+from app import conditional, crud
 from app.crud import StaleVersionError
 from app.db import get_db
 from app.models import GradingCertificate
 from app.schemas import CertificateCreate, CertificateRead
 
-router = APIRouter(prefix="/certificates", tags=["certificates"])
+router = APIRouter(
+    prefix="/certificates",
+    tags=["certificates"],
+    route_class=conditional.ConditionalGetRoute,
+)
 
 
 @router.post(
@@ -57,11 +61,18 @@ def create_certificate(
 
 
 @router.get(
-    "", response_model=list[CertificateRead], summary="List grading certificates"
+    "",
+    response_model=list[CertificateRead],
+    summary="List grading certificates",
+    responses={
+        200: {"headers": conditional.RESPONSE_HEADERS_ETAG},
+        304: {"description": "Not modified (If-None-Match matched)."},
+    },
 )
 def list_certificates(
     *,
     session: Session = Depends(get_db),
+    response: Response,
     card_id: int | None = Query(
         default=None, description="Only the certificate of this card."
     ),
@@ -85,7 +96,7 @@ def list_certificates(
     offset: int = Query(default=0, ge=0, description="Number of items to skip."),
 ) -> Sequence[GradingCertificate]:
     """List grading certificates with optional filtering and ordering."""
-    return crud.list_certificates(
+    certificates = crud.list_certificates(
         session,
         card_id=card_id,
         grading_company=grading_company,
@@ -96,15 +107,23 @@ def list_certificates(
         limit=limit,
         offset=offset,
     )
+    response.headers["ETag"] = conditional.etag_for_immutable_collection(
+        "certificates", (certificate.id for certificate in certificates)
+    )
+    return certificates
 
 
 @router.get(
     "/{certificate_id}",
     response_model=CertificateRead,
     summary="Get a grading certificate",
+    responses={
+        200: {"headers": conditional.RESPONSE_HEADERS_ETAG},
+        304: {"description": "Not modified (If-None-Match matched)."},
+    },
 )
 def get_certificate(
-    certificate_id: int, session: Session = Depends(get_db)
+    certificate_id: int, response: Response, session: Session = Depends(get_db)
 ) -> GradingCertificate:
     """Return a single grading certificate."""
     certificate = crud.get_certificate(session, certificate_id)
@@ -112,6 +131,9 @@ def get_certificate(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Certificate not found"
         )
+    response.headers["ETag"] = conditional.etag_for_immutable(
+        "certificate", certificate.id
+    )
     return certificate
 
 

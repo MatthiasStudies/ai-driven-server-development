@@ -3,16 +3,20 @@
 from collections.abc import Sequence
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app import crud
+from app import conditional, crud
 from app.crud import StaleVersionError
 from app.db import get_db
 from app.models import Card
 from app.schemas import CardCreate, CardRead, CardUpdate
 
-router = APIRouter(prefix="/cards", tags=["cards"])
+router = APIRouter(
+    prefix="/cards",
+    tags=["cards"],
+    route_class=conditional.ConditionalGetRoute,
+)
 
 
 @router.post(
@@ -31,10 +35,19 @@ def create_card(data: CardCreate, session: Session = Depends(get_db)) -> Card:
     return crud.create_card(session, data)
 
 
-@router.get("", response_model=list[CardRead], summary="List cards")
+@router.get(
+    "",
+    response_model=list[CardRead],
+    summary="List cards",
+    responses={
+        200: {"headers": conditional.RESPONSE_HEADERS_ETAG},
+        304: {"description": "Not modified (If-None-Match matched)."},
+    },
+)
 def list_cards(
     *,
     session: Session = Depends(get_db),
+    response: Response,
     binder_id: int | None = Query(
         default=None, description="Only cards in this binder."
     ),
@@ -73,7 +86,7 @@ def list_cards(
     offset: int = Query(default=0, ge=0, description="Number of items to skip."),
 ) -> Sequence[Card]:
     """List cards with optional filtering, ordering and pagination."""
-    return crud.list_cards(
+    cards = crud.list_cards(
         session,
         binder_id=binder_id,
         name=name,
@@ -87,16 +100,31 @@ def list_cards(
         limit=limit,
         offset=offset,
     )
+    response.headers["ETag"] = conditional.etag_for_collection(
+        "cards", [(card.id, card.version) for card in cards]
+    )
+    return cards
 
 
-@router.get("/{card_id}", response_model=CardRead, summary="Get a card")
-def get_card(card_id: int, session: Session = Depends(get_db)) -> Card:
+@router.get(
+    "/{card_id}",
+    response_model=CardRead,
+    summary="Get a card",
+    responses={
+        200: {"headers": conditional.RESPONSE_HEADERS_ETAG},
+        304: {"description": "Not modified (If-None-Match matched)."},
+    },
+)
+def get_card(
+    card_id: int, response: Response, session: Session = Depends(get_db)
+) -> Card:
     """Return a single card including its certificate if graded."""
     card = crud.get_card_with_certificate(session, card_id)
     if card is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Card not found"
         )
+    response.headers["ETag"] = conditional.etag_for("card", card.id, card.version)
     return card
 
 
