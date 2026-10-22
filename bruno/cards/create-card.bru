@@ -1,0 +1,25 @@
+meta {
+  name: Create card
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/cards
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "binder_id": 3,
+    "name": "Gengar",
+    "set_name": "Fossil",
+    "collector_number": "5/62",
+    "rarity": "Holo Rare"
+  }
+}
+
+docs {
+  variant defaults to "Standard", acquired_at defaults to today.
+}

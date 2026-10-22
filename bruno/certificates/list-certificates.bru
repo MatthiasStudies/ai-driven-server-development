@@ -1,0 +1,11 @@
+meta {
+  name: List certificates
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/certificates?order_by=grade&order=desc
+  body: none
+  auth: none
+}

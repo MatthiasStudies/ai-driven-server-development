@@ -1,0 +1,21 @@
+meta {
+  name: Conditional GET (304)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/cards/1
+  body: none
+  auth: none
+}
+
+headers {
+  If-None-Match: {{cardEtag}}
+}
+
+docs {
+  Run "Get card" first to capture {{cardEtag}}.
+  If nothing changed since then, the server replies 304 Not Modified
+  with an empty body.
+}

@@ -1,0 +1,20 @@
+meta {
+  name: Quicksearch cards
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/search?q=gengar
+  body: none
+  auth: none
+}
+
+params:query {
+  q: gengar
+}
+
+docs {
+  Fuzzy search over card name, set name and collector number
+  (rapidfuzz ranking, typos welcome).
+}

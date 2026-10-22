@@ -1,0 +1,26 @@
+meta {
+  name: Update binder (partial)
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/binders/3
+  body: json
+  auth: none
+}
+
+headers {
+  If-Match: {{binderEtag}}
+}
+
+body:json {
+  {
+    "name": "Trade Binder XL"
+  }
+}
+
+docs {
+  Run "Get binder" first: it captures {{binderEtag}} and the update must
+  send it in If-Match. A missing header returns 428, a stale ETag 412.
+}

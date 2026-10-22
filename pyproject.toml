@@ -3,4 +3,41 @@ name = "tcg-card-stack"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.15,<3.16"
-dependencies = []
+dependencies = [
+    "fastapi==0.159.1",
+    "psycopg[binary]==3.3.6",
+    "pydantic-settings==2.16.1",
+    "rapidfuzz==3.14.6",
+    "sqlalchemy>=2",
+    "uvicorn[standard]==0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff==0.15.2",
+    "pytest==9.0.2",
+    "ty==0.0.18",
+    "httpx==0.28.1",
+    "httpx2==2.16.0",
+]
+
+[tool.uv]
+add-bounds = "exact"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = [
+    "E", # Errors
+    "F", # Pyflakes
+    "W", # Warnings
+    "C90", # Complexity
+    "ANN", # Annotations
+    "RUF", # Ruff
+    "TID", # flake8 tidy imports
+]

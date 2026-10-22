@@ -1,0 +1,18 @@
+meta {
+  name: Create binder
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/binders
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "Vintage Vault 2",
+    "description": "Created via Bruno"
+  }
+}

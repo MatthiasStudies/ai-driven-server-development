@@ -1,0 +1,26 @@
+meta {
+  name: Add certificate to card
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/certificates
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "card_id": 3,
+    "grading_company": "PSA",
+    "cert_number": "PSA-99999999",
+    "grade": 9.5,
+    "graded_at": "2024-08-01"
+  }
+}
+
+docs {
+  Certificates are immutable: posting another one for the same card
+  returns 409, as does a duplicate cert_number.
+}
